@@ -270,7 +270,7 @@ while true; do
 
     case $choice in
         1) run_remote "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/cd/panel2.sh" "Panel Installation" ;;
-        2) run_remote "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/cd/wing2.sh" "Wings Installation" ;;
+        2) run_remote "https://raw.githubusercontent.com/r34infinityfart/vps/refs/heads/main/wings.sh" "Wings Installation" ;;
         3) run_remote "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/cd/update2.sh" "Panel Update" ;;
         4) run_remote "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/cd/uninstall2.sh" "Uninstaller" ;;
         5) run_remote "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/cd/Blueprint2.sh" "Blueprint Framework" ;;
