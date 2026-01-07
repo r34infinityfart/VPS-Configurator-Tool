@@ -1,68 +1,79 @@
 #!/bin/bash
 
-# REBS CF-WINGS REPAIR TOOL
-# Fixes SSL Protocol Errors when using Cloudflare Tunnels
+# ==============================================================================
+#  REBS AUTOMATED REPAIR & CONFIGURATOR
+#  Fixes: 500 Errors, Permissions, and Cloudflare SSL Mismatches
+# ==============================================================================
 
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\133[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+WHITE='\033[1;37m'
 NC='\033[0m'
 
-clear
-echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   ${CYAN}CLOUDFLARE TUNNEL + WINGS REPAIR TOOL${NC}    ${BLUE}║${NC}"
-echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
-echo -e "${YELLOW}This tool will:${NC}"
-echo -e " 1. Fix Panel Permissions (Solve 500 Error)"
-echo -e " 2. Configure Wings for Tunneling (Disable local SSL)"
-echo -e " 3. Tell you exactly what to put in Cloudflare"
-echo ""
-
+# Check Root
 if [[ $EUID -ne 0 ]]; then
    echo -e "${RED}❌ Please run as root.${NC}"
    exit 1
 fi
 
+clear
+echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║   ${CYAN}PTERODACTYL & CLOUDFLARE REPAIR TOOL${NC}     ${BLUE}║${NC}"
+echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+
 # ==========================================
-# STEP 1: FIX PANEL 500 ERROR
+# PHASE 1: PANEL REPAIR (Fixing the 500 Error)
 # ==========================================
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}PHASE 1: Repairing Panel (Fixing 500 Errors)${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "\n${BLUE}➤ PHASE 1: Repairing Panel Permissions & Cache${NC}"
 
 if [ -d "/var/www/pterodactyl" ]; then
-    echo -e "${YELLOW}⏳ Setting correct permissions...${NC}"
-    chmod -R 755 /var/www/pterodactyl/storage bootstrap/cache 2>/dev/null
-    chown -R www-data:www-data /var/www/pterodactyl/* 2>/dev/null
-    
-    echo -e "${YELLOW}⏳ Clearing Panel Cache...${NC}"
     cd /var/www/pterodactyl
-    php artisan optimize:clear
-    php artisan config:clear
+
+    echo -e "${YELLOW}⏳ Resetting file ownership to www-data...${NC}"
+    chown -R www-data:www-data /var/www/pterodactyl
+
+    echo -e "${YELLOW}⏳ Setting directory permissions...${NC}"
+    find /var/www/pterodactyl -type d -exec chmod 755 {} \;
+    find /var/www/pterodactyl -type f -exec chmod 644 {} \;
     
-    echo -e "${GREEN}✅ Panel permissions and cache reset.${NC}"
+    # Storage and Cache need write access
+    chmod -R 775 /var/www/pterodactyl/storage
+    chmod -R 775 /var/www/pterodactyl/bootstrap/cache
+
+    echo -e "${YELLOW}⏳ Clearing Cache (as www-data user)...${NC}"
+    # CRITICAL: Run as www-data so root doesn't own the cache files
+    sudo -u www-data php artisan optimize:clear
+    sudo -u www-data php artisan config:clear
+    sudo -u www-data php artisan view:clear
+
+    echo -e "${GREEN}✅ Panel permissions fixed. 500 Error should be gone.${NC}"
 else
-    echo -e "${RED}❌ Panel directory not found. Skipping Phase 1.${NC}"
+    echo -e "${RED}❌ Panel directory not found! Skipping Phase 1.${NC}"
 fi
 
 # ==========================================
-# STEP 2: RECONFIGURE WINGS
+# PHASE 2: WINGS CONFIGURATION (Fixing SSL Error)
 # ==========================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}PHASE 2: Configuring Wings for Cloudflare${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "\n${BLUE}➤ PHASE 2: Configuring Wings for Cloudflare Tunnel${NC}"
 
-# Stop wings to prevent errors during edit
+# Check if Wings is installed
+if [ ! -f "/etc/pterodactyl/config.yml" ]; then
+    echo -e "${YELLOW}⚠️  Wings config not found. Creating a new one.${NC}"
+    mkdir -p /etc/pterodactyl
+fi
+
+# Stop wings temporarily
 systemctl stop wings
 
-echo -e "${YELLOW}We need to rewrite your config.yml to force HTTP mode.${NC}"
-echo -e "${YELLOW}Please copy these details from your Admin Panel -> Nodes -> Configuration tab:${NC}"
+echo -e "${CYAN}We need to set up the config manually to ensure SSL is OFF locally.${NC}"
+echo -e "${WHITE}Please grab these details from your Admin Panel > Nodes > Configuration:${NC}"
 echo ""
 
-read -p "1. Enter Panel URL (e.g. https://main.verse-network.eu.org): " PANEL_URL
+read -p "1. Enter Panel URL (e.g., https://main.verse-network.eu.org): " PANEL_URL
 read -p "2. Enter Node UUID: " UUID
 read -p "3. Enter Token ID: " TOKEN_ID
 read -p "4. Enter Token Secret: " TOKEN_SECRET
@@ -70,12 +81,10 @@ read -p "4. Enter Token Secret: " TOKEN_SECRET
 # Strip trailing slash from URL
 PANEL_URL=${PANEL_URL%/}
 
-echo -e "${YELLOW}⏳ Backing up old config...${NC}"
-cp /etc/pterodactyl/config.yml /etc/pterodactyl/config.yml.bak 2>/dev/null
+echo -e "${YELLOW}⏳ Writing Cloudflare-Optimized Config...${NC}"
 
-echo -e "${YELLOW}⏳ Writing new Cloudflare-Compatible Config...${NC}"
-
-# This config forces SSL FALSE and binds to 0.0.0.0 so the Tunnel can find it
+# Create the config file
+# KEY CHANGES: host is 0.0.0.0, ssl enabled is FALSE
 cat > /etc/pterodactyl/config.yml <<EOF
 debug: false
 uuid: $UUID
@@ -98,47 +107,39 @@ api:
   upload_limit: 100
 EOF
 
-echo -e "${GREEN}✅ Config rewritten. Restarting Wings...${NC}"
+echo -e "${GREEN}✅ Config written. Restarting Wings...${NC}"
 systemctl restart wings
 
-# Check status
+# Check if Wings started
+sleep 2
 if systemctl is-active --quiet wings; then
     echo -e "${GREEN}✅ Wings is RUNNING.${NC}"
 else
-    echo -e "${RED}❌ Wings failed to start. Check 'journalctl -u wings -n 50'${NC}"
+    echo -e "${RED}❌ Wings failed to start. Run 'journalctl -u wings -n 20' to see why.${NC}"
 fi
 
 # ==========================================
-# STEP 3: INSTRUCTIONS
+# PHASE 3: FINAL INSTRUCTIONS
 # ==========================================
-echo ""
-echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║              ⚠️  FINAL MANUAL STEPS REQUIRED  ⚠️             ║${NC}"
+echo -e "\n${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║          ⚠️  FINAL REQUIRED CONFIGURATION  ⚠️             ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "You must configure the Cloudflare Dashboard and Pterodactyl Panel"
-echo -e "EXACTLY like this, or the SSL Error will return."
+echo -e "${WHITE}If you do not do these 2 steps, it will NOT work.${NC}"
 echo ""
 
-echo -e "${CYAN}1. CLOUDFLARE ZERO TRUST DASHBOARD (Access > Tunnels):${NC}"
-echo -e "   ---------------------------------------------------------"
+echo -e "${CYAN}STEP 1: Cloudflare Zero Trust (Access > Tunnels)${NC}"
 echo -e "   Hostname: ${WHITE}wings.verse-network.eu.org${NC}"
-echo -e "   Service:  ${GREEN}HTTP${NC}  (NOT HTTPS!)"
+echo -e "   Service:  ${GREEN}HTTP${NC}  (Crucial: NOT HTTPS)"
 echo -e "   URL:      ${WHITE}localhost:8080${NC}"
-echo -e "   ${YELLOW}*Do NOT enable 'No TLS Verify', just use HTTP service type*${NC}"
 echo ""
 
-echo -e "${CYAN}2. PTERODACTYL ADMIN PANEL (Nodes > Configuration):${NC}"
-echo -e "   ---------------------------------------------------------"
+echo -e "${CYAN}STEP 2: Pterodactyl Admin (Nodes > Configuration)${NC}"
 echo -e "   FQDN:               ${WHITE}wings.verse-network.eu.org${NC}"
 echo -e "   Communicate via SSL:${GREEN} Use SSL Connection${NC} (Yes)"
 echo -e "   Behind Proxy:       ${GREEN}Behind Proxy${NC}       (Yes)"
-echo -e "   Daemon Port:        ${GREEN}443${NC}                  (Important!)"
+echo -e "   Daemon Port:        ${GREEN}443${NC}                  (Must be 443)"
 echo -e "   SFTP Port:          ${WHITE}2022${NC}"
 echo ""
 
-echo -e "${YELLOW}Why these settings?${NC}"
-echo -e "Because Cloudflare handles the SSL (Port 443). The tunnel sends"
-echo -e "unencrypted traffic to Wings (Port 8080). If you turn SSL on in"
-echo -e "Wings, Cloudflare gets confused and gives Protocol Error."
-echo ""
+echo -e "${YELLOW}Why?${NC} Browser (SSL) -> Cloudflare (SSL) -> Tunnel -> Wings (No SSL)"
+echo -e "${GREEN}Configuration Complete.${NC}"
