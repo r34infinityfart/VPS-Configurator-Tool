@@ -15,8 +15,7 @@ IMG_DIR="$BASE_DIR/images"
 VM_DIR="$BASE_DIR/instances"
 GLOBAL_LOG="$BASE_DIR/manager.log"
 INSTALL_PATH="/usr/local/bin/cloudmanager"
-# Replace this URL with your actual raw git file for version checking in the future
-UPDATE_URL="https://example.com/version.txt" 
+UPDATE_URL="https://raw.githubusercontent.com/r34infinityfart/VPS-Configurator-Tool/refs/heads/main/rebs-cloud-ops.sh" 
 
 # --- Logging Helper ---
 log() {
